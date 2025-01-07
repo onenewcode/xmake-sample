@@ -6,25 +6,39 @@
 int main() {
     CUdevice device;
     CUcontext context;
-    CUmodule module;
     CUfunction function;
     CUdeviceptr d_A,d_B, d_C;
     // Initialize the CUDA driver API
-    cuInit(0);
+    // cuInit(0);
 
     // Choose which GPU to use (if any)
     cuDeviceGet(&device, 0);
 
     // Create a CUDA context for the chosen device
-    cuCtxCreate(&context, 0, device);
+    // gpu new
+    cuCtxCreate_v2(&context, 0, device);
+    cuCtxPopCurrent_v2(NULL);
 
+    // op init
     cublasHandle_t handle;
-    cublasCreate(&handle);
+    cublasCreate_v2(&handle);
+    cudaStream_t stream;
+    CUresult err = cuStreamCreate(&stream,0);
+    if (err != CUDA_SUCCESS) {
+      std::cerr << "create stream fail" << std::endl;
+    return 1;
+    }
+ 
+    cublasStatus_t stat = cublasSetStream_v2(handle, stream);
+    if (stat != CUBLAS_STATUS_SUCCESS) {
+         std::cerr << "set stream fail" << std::endl;
+     return 1;
+    }
 
     int m = 2048; // 矩阵A的行数
     int n = 1024; // 矩阵B的列数
     int k = 2048; // 矩阵A的列数和矩阵B的行数
-    int batch_count = 70; // 批量数量
+    int batch_count = 20; // 批量数量
 
     // 分配主机内存
     half *h_A = new half[m * k * batch_count];
@@ -33,16 +47,13 @@ int main() {
 
     // 初始化矩阵A和B
     for (int i = 0; i < m * k * batch_count; ++i) {
-        h_A[i] = __float2half_rn(1.0f);
+        h_A[i] = __float2half_rn(0.1f);
     }
     for (int i = 0; i < k * n * batch_count; ++i) {
-        h_B[i] = __float2half_rn(1.0f);
-    }
-    for (int i = 0;i <  m * n * batch_count; ++i) {
-        h_C[i] = __float2half_rn(1.0f);
+        h_B[i] = __float2half_rn(0.1f);
     }
     // 分配设备内存
-    CUresult err = cuMemAlloc_v2(&d_A, m * k * batch_count * sizeof(half));
+    err = cuMemAlloc_v2(&d_A, m * k * batch_count * sizeof(half));
     if (err!= CUDA_SUCCESS    ) {
         std::cerr << "cuMemAlloc_v2 d_A failed: "  << std::endl;
         cuMemFree_v2(d_A);
@@ -114,9 +125,13 @@ int main() {
         cublasDestroy(handle);
         return 1;
     }
-
+    cuCtxSynchronize();
     // 确保所有CUDA操作已完成
-    // cuCtxSynchronize();
+    //  err1 = cudaStreamSynchronize(stream);
+    // if (err != cudaSuccess) {
+    //     std::cerr << "sync stream fail" << std::endl;
+    // return 1;
+    // }
     // 记录矩阵乘法结束时间
     auto end_matmul = std::chrono::system_clock::now();
     std::chrono::duration<double> elapsed_matmul = end_matmul - start_matmul;
@@ -157,7 +172,7 @@ int main() {
     delete[] h_A;
     delete[] h_B;
     delete[] h_C;
-
+   cuCtxPopCurrent_v2(&context);
     // 销毁cuBLAS句柄
     cublasDestroy(handle);
 
