@@ -1,4 +1,3 @@
-#include <cuda_runtime.h>
 #include <cublas_v2.h>
 #include <iostream>
 #include <chrono>
@@ -10,7 +9,6 @@ int main() {
     CUmodule module;
     CUfunction function;
     CUdeviceptr d_A,d_B, d_C;
-
     // Initialize the CUDA driver API
     cuInit(0);
 
@@ -19,6 +17,9 @@ int main() {
 
     // Create a CUDA context for the chosen device
     cuCtxCreate(&context, 0, device);
+
+    cublasHandle_t handle;
+    cublasCreate(&handle);
 
     int m = 2048; // 矩阵A的行数
     int n = 1024; // 矩阵B的列数
@@ -32,23 +33,52 @@ int main() {
 
     // 初始化矩阵A和B
     for (int i = 0; i < m * k * batch_count; ++i) {
-        h_A[i] =__float2half_rn(1.0f) ;
+        h_A[i] = __float2half_rn(1.0f);
     }
     for (int i = 0; i < k * n * batch_count; ++i) {
-        h_B[i] = __float2half_rn(1.0f);
+        h_B[i] = __float2half_rn(2.0f);
     }
 
-    cuMemAlloc(&d_A, m * k * batch_count * sizeof(half));
-    cuMemAlloc(&d_B, k * n * batch_count * sizeof(half));
-    cuMemAlloc(&d_C, m * n * batch_count * sizeof(half));
+    // 分配设备内存
+    CUresult err = cuMemAlloc_v2(&d_A, m * k * batch_count * sizeof(half));
+    if (err!= CUDA_SUCCESS    ) {
+        std::cerr << "cudaMalloc d_A failed: "  << std::endl;
+        cuMemFree_v2(d_A);
+        return 1;
+    }
+    err = cuMemAlloc_v2(&d_B, k * n * batch_count * sizeof(half));
+    if (err!= CUDA_SUCCESS    ) {
+        std::cerr << "cudaMalloc d_B failed: " << std::endl;
+        cuMemFree_v2(d_A);
+        cuMemFree_v2(d_B);
+        return 1;
+    }
+    err = cuMemAlloc_v2(&d_C, m * n * batch_count * sizeof(half));
+    if (err!= CUDA_SUCCESS    ) {
+        std::cerr << "cudaMalloc d_C failed: " << std::endl;
+        cuMemFree_v2(d_A);
+        cuMemFree_v2(d_B);
+        cuMemFree_v2(d_C);
+        return 1;
+    }
 
     // 将数据从主机内存复制到设备内存
-    cuMemcpyHtoD_v2(d_A, h_A, m * k * batch_count * sizeof(half));
-    cuMemcpyHtoD_v2(d_B, h_B, k * n * batch_count * sizeof(half));
-
-    // 创建cuBLAS句柄
-    cublasHandle_t handle;
-    cublasCreate(&handle);
+    err = cuMemcpyHtoD(d_A, h_A, m * k * batch_count * sizeof(half));
+    if (err!= CUDA_SUCCESS    ) {
+        std::cerr << "cudaMemcpy d_A failed: "<< std::endl;
+        cuMemFree_v2(d_A);
+        cuMemFree_v2(d_B);
+        cuMemFree_v2(d_C);
+        return 1;
+    }
+    err = cuMemcpyHtoD(d_B, h_B, k * n * batch_count * sizeof(half));
+    if (err!= CUDA_SUCCESS    ) {
+        std::cerr << "cudaMemcpy d_B failed: "  << std::endl;
+        cuMemFree_v2(d_A);
+        cuMemFree_v2(d_B);
+        cuMemFree_v2(d_C);
+        return 1;
+    }
 
     // 设置矩阵乘法参数
     const half alpha = 1.0f;
@@ -61,6 +91,7 @@ int main() {
     const int strideA = m * k;
     const int strideB = k * n;
     const int strideC = m * n;
+
     // 记录开始时间
     auto start_matmul = std::chrono::system_clock::now();
     // 调用cublasGemmStridedBatchedEx进行矩阵乘法
@@ -73,12 +104,14 @@ int main() {
     );
 
     // 检查cuBLAS调用是否成功
-    if (status != CUBLAS_STATUS_SUCCESS) {
+    if (status!= CUBLAS_STATUS_SUCCESS) {
         std::cerr << "cuBLAS error: " << status << std::endl;
+        cuMemFree_v2(d_A);
+        cuMemFree_v2(d_B);
+        cuMemFree_v2(d_C);
+        cublasDestroy(handle);
         return 1;
     }
-
-
 
     // 确保所有CUDA操作已完成
     cuCtxSynchronize();
@@ -91,16 +124,32 @@ int main() {
     auto start_copyback = std::chrono::system_clock::now();
 
     // 将结果从设备内存复制回主机内存
-    cuMemcpyDtoH_v2(h_C, d_C, m * n * batch_count * sizeof(half));
+    err = cuMemcpyDtoH_v2(h_C, d_C, m * n * batch_count * sizeof(half));
+    if (err!= CUDA_SUCCESS    ) {
+        std::cerr << "cudaMemcpy d_C failed: " << std::endl;
+        cuMemFree_v2(d_A);
+        cuMemFree_v2(d_B);
+        cuMemFree_v2(d_C);
+        cublasDestroy(handle);
+        return 1;
+    }
 
     // 记录数据复制回主机结束时间
     auto end_copyback = std::chrono::system_clock::now();
     std::chrono::duration<double> elapsed_copyback = end_copyback - start_copyback;
     std::cout << "拷贝内存时间" << elapsed_copyback.count() << " seconds." << std::endl;
+
+    // 输出结果矩阵C的前10个元素
+    for (int i = 0; i < 10; ++i) {
+        float output = __half2float(h_C[i]);
+        std::cout << output << " ";
+    }
+    std::cout << std::endl;
+
     // 释放设备内存
-    cuMemFree(d_A);
-    cuMemFree(d_B);
-    cuMemFree(d_C);
+    cuMemFree_v2(d_A);
+    cuMemFree_v2(d_B);
+    cuMemFree_v2(d_C);
 
     // 释放主机内存
     delete[] h_A;
