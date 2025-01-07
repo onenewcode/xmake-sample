@@ -24,7 +24,7 @@ int main() {
     int m = 2048; // 矩阵A的行数
     int n = 1024; // 矩阵B的列数
     int k = 2048; // 矩阵A的列数和矩阵B的行数
-    int batch_count = 10; // 批量数量
+    int batch_count = 70; // 批量数量
 
     // 分配主机内存
     half *h_A = new half[m * k * batch_count];
@@ -36,26 +36,28 @@ int main() {
         h_A[i] = __float2half_rn(1.0f);
     }
     for (int i = 0; i < k * n * batch_count; ++i) {
-        h_B[i] = __float2half_rn(2.0f);
+        h_B[i] = __float2half_rn(1.0f);
     }
-
+    for (int i = 0;i <  m * n * batch_count; ++i) {
+        h_C[i] = __float2half_rn(1.0f);
+    }
     // 分配设备内存
     CUresult err = cuMemAlloc_v2(&d_A, m * k * batch_count * sizeof(half));
     if (err!= CUDA_SUCCESS    ) {
-        std::cerr << "cudaMalloc d_A failed: "  << std::endl;
+        std::cerr << "cuMemAlloc_v2 d_A failed: "  << std::endl;
         cuMemFree_v2(d_A);
         return 1;
     }
     err = cuMemAlloc_v2(&d_B, k * n * batch_count * sizeof(half));
     if (err!= CUDA_SUCCESS    ) {
-        std::cerr << "cudaMalloc d_B failed: " << std::endl;
+        std::cerr << "cuMemAlloc_v2 d_B failed: " << std::endl;
         cuMemFree_v2(d_A);
         cuMemFree_v2(d_B);
         return 1;
     }
     err = cuMemAlloc_v2(&d_C, m * n * batch_count * sizeof(half));
     if (err!= CUDA_SUCCESS    ) {
-        std::cerr << "cudaMalloc d_C failed: " << std::endl;
+        std::cerr << "cuMemAlloc_v2 d_C failed: " << std::endl;
         cuMemFree_v2(d_A);
         cuMemFree_v2(d_B);
         cuMemFree_v2(d_C);
@@ -63,17 +65,17 @@ int main() {
     }
 
     // 将数据从主机内存复制到设备内存
-    err = cuMemcpyHtoD(d_A, h_A, m * k * batch_count * sizeof(half));
+    err = cuMemcpyHtoD_v2(d_A, h_A, m * k * batch_count * sizeof(half));
     if (err!= CUDA_SUCCESS    ) {
-        std::cerr << "cudaMemcpy d_A failed: "<< std::endl;
+        std::cerr << "cuMemcpyHtoD d_A failed: "<< std::endl;
         cuMemFree_v2(d_A);
         cuMemFree_v2(d_B);
         cuMemFree_v2(d_C);
         return 1;
     }
-    err = cuMemcpyHtoD(d_B, h_B, k * n * batch_count * sizeof(half));
+    err = cuMemcpyHtoD_v2(d_B, h_B, k * n * batch_count * sizeof(half));
     if (err!= CUDA_SUCCESS    ) {
-        std::cerr << "cudaMemcpy d_B failed: "  << std::endl;
+        std::cerr << "cuMemcpyHtoD d_B failed: "  << std::endl;
         cuMemFree_v2(d_A);
         cuMemFree_v2(d_B);
         cuMemFree_v2(d_C);
@@ -97,9 +99,9 @@ int main() {
     // 调用cublasGemmStridedBatchedEx进行矩阵乘法
     cublasStatus_t status = cublasGemmStridedBatchedEx(
         handle, transA, transB, m, n, k, &alpha,
-        &d_A, CUDA_R_16F, lda, strideA,
-        &d_B, CUDA_R_16F, ldb, strideB,
-        &beta, &d_C, CUDA_R_16F, ldc, strideC,
+        reinterpret_cast<const void*>(d_A), CUDA_R_16F, lda, strideA,
+        reinterpret_cast<const void*>(d_B), CUDA_R_16F, ldb, strideB,
+        &beta, reinterpret_cast<void*>(d_C), CUDA_R_16F, ldc, strideC,
         batch_count, CUDA_R_16F, CUBLAS_GEMM_DEFAULT
     );
 
@@ -114,7 +116,7 @@ int main() {
     }
 
     // 确保所有CUDA操作已完成
-    cuCtxSynchronize();
+    // cuCtxSynchronize();
     // 记录矩阵乘法结束时间
     auto end_matmul = std::chrono::system_clock::now();
     std::chrono::duration<double> elapsed_matmul = end_matmul - start_matmul;
@@ -126,7 +128,7 @@ int main() {
     // 将结果从设备内存复制回主机内存
     err = cuMemcpyDtoH_v2(h_C, d_C, m * n * batch_count * sizeof(half));
     if (err!= CUDA_SUCCESS    ) {
-        std::cerr << "cudaMemcpy d_C failed: " << std::endl;
+        std::cerr << "cuMemcpyDtoH_v2 d_C failed: "<<err << std::endl;
         cuMemFree_v2(d_A);
         cuMemFree_v2(d_B);
         cuMemFree_v2(d_C);
