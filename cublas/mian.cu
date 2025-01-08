@@ -1,44 +1,36 @@
-#include <cublas_v2.h>
-#include <iostream>
 #include <chrono>
+#include <cublas_v2.h>
 #include <cuda.h>
+#include <iostream>
 
 int main() {
     CUdevice device;
     CUcontext context;
-    CUfunction function;
-    CUdeviceptr d_A,d_B, d_C;
-    // Initialize the CUDA driver API
-    // gpu::init
+    CUdeviceptr d_A, d_B, d_C;
+
     cuInit(0);
     cuDeviceGet(&device, 0);
     cuCtxCreate_v2(&context, 0, device);
-    cuCtxPopCurrent_v2(NULL);
-
-
-    // op new
     cublasHandle_t handle;
-    cuCtxPushCurrent_v2(context);
-    cublasCreate_v2(&handle);
-    cuCtxPopCurrent_v2(NULL);
 
-// apply
-    cuCtxPushCurrent_v2(context);
+    cublasCreate_v2(&handle);
+
+
     // 创建流
     cudaStream_t stream;
-    CUresult err = cuStreamCreate(&stream,0);
+    CUresult err = cuStreamCreate(&stream, 0);
 
     if (err != CUDA_SUCCESS) {
-      std::cerr << "create stream fail" << std::endl;
-    return 1;
+        std::cerr << "create stream fail" << std::endl;
+        return 1;
     }
- 
-   // 分配内存
 
-    int m = 2048; // 矩阵A的行数
-    int n = 1024; // 矩阵B的列数
-    int k = 2048; // 矩阵A的列数和矩阵B的行数
-    int batch_count = 20; // 批量数量
+    // 分配内存
+
+    int m = 2048;        // 矩阵A的行数
+    int n = 1024;        // 矩阵B的列数
+    int k = 2048;        // 矩阵A的列数和矩阵B的行数
+    int batch_count = 50;// 批量数量
 
     // 分配主机内存
     half *h_A = new half[m * k * batch_count];
@@ -52,25 +44,25 @@ int main() {
     for (int i = 0; i < k * n * batch_count; ++i) {
         h_B[i] = __float2half_rn(0.1f);
     }
-      for (int i = 0; i < m * n* batch_count; ++i) {
+    for (int i = 0; i < m * n * batch_count; ++i) {
         h_C[i] = __float2half_rn(0.1f);
     }
     // 分配设备内存
     err = cuMemAlloc_v2(&d_A, m * k * batch_count * sizeof(half));
-    if (err!= CUDA_SUCCESS    ) {
-        std::cerr << "cuMemAlloc_v2 d_A failed: "  << std::endl;
+    if (err != CUDA_SUCCESS) {
+        std::cerr << "cuMemAlloc_v2 d_A failed: " << std::endl;
         cuMemFree_v2(d_A);
         return 1;
     }
     err = cuMemAlloc_v2(&d_B, k * n * batch_count * sizeof(half));
-    if (err!= CUDA_SUCCESS    ) {
+    if (err != CUDA_SUCCESS) {
         std::cerr << "cuMemAlloc_v2 d_B failed: " << std::endl;
         cuMemFree_v2(d_A);
         cuMemFree_v2(d_B);
         return 1;
     }
     err = cuMemAlloc_v2(&d_C, m * n * batch_count * sizeof(half));
-    if (err!= CUDA_SUCCESS    ) {
+    if (err != CUDA_SUCCESS) {
         std::cerr << "cuMemAlloc_v2 d_C failed: " << std::endl;
         cuMemFree_v2(d_A);
         cuMemFree_v2(d_B);
@@ -80,16 +72,16 @@ int main() {
 
     // 将数据从主机内存复制到设备内存
     err = cuMemcpyHtoD_v2(d_A, h_A, m * k * batch_count * sizeof(half));
-    if (err!= CUDA_SUCCESS    ) {
-        std::cerr << "cuMemcpyHtoD d_A failed: "<< std::endl;
+    if (err != CUDA_SUCCESS) {
+        std::cerr << "cuMemcpyHtoD d_A failed: " << std::endl;
         cuMemFree_v2(d_A);
         cuMemFree_v2(d_B);
         cuMemFree_v2(d_C);
         return 1;
     }
     err = cuMemcpyHtoD_v2(d_B, h_B, k * n * batch_count * sizeof(half));
-    if (err!= CUDA_SUCCESS    ) {
-        std::cerr << "cuMemcpyHtoD d_B failed: "  << std::endl;
+    if (err != CUDA_SUCCESS) {
+        std::cerr << "cuMemcpyHtoD d_B failed: " << std::endl;
         cuMemFree_v2(d_A);
         cuMemFree_v2(d_B);
         cuMemFree_v2(d_C);
@@ -114,20 +106,19 @@ int main() {
     // cublas
     cublasStatus_t stat = cublasSetStream_v2(handle, stream);
     if (stat != CUBLAS_STATUS_SUCCESS) {
-         std::cerr << "set stream fail" << std::endl;
-     return 1;
+        std::cerr << "set stream fail" << std::endl;
+        return 1;
     }
     // 调用cublasGemmStridedBatchedEx进行矩阵乘法
     cublasStatus_t status = cublasGemmStridedBatchedEx(
         handle, transA, transB, m, n, k, &alpha,
-        reinterpret_cast<const void*>(d_A), CUDA_R_16F, lda, strideA,
-        reinterpret_cast<const void*>(d_B), CUDA_R_16F, ldb, strideB,
-        &beta, reinterpret_cast<void*>(d_C), CUDA_R_16F, ldc, strideC,
-        batch_count, CUDA_R_16F, CUBLAS_GEMM_DEFAULT
-    );
+        reinterpret_cast<const void *>(d_A), CUDA_R_16F, lda, strideA,
+        reinterpret_cast<const void *>(d_B), CUDA_R_16F, ldb, strideB,
+        &beta, reinterpret_cast<void *>(d_C), CUDA_R_16F, ldc, strideC,
+        batch_count, CUDA_R_16F, CUBLAS_GEMM_DEFAULT);
 
     // 检查cuBLAS调用是否成功
-    if (status!= CUBLAS_STATUS_SUCCESS) {
+    if (status != CUBLAS_STATUS_SUCCESS) {
         std::cerr << "cuBLAS error: " << status << std::endl;
         cuMemFree_v2(d_A);
         cuMemFree_v2(d_B);
@@ -136,7 +127,7 @@ int main() {
         return 1;
     }
     cuCtxSynchronize();
-    
+
     // 确保所有CUDA操作已完成
     //  err1 = cudaStreamSynchronize(stream);
     // if (err != cudaSuccess) {
@@ -153,8 +144,8 @@ int main() {
 
     // 将结果从设备内存复制回主机内存
     err = cuMemcpyDtoH_v2(h_C, d_C, m * n * batch_count * sizeof(half));
-    if (err!= CUDA_SUCCESS    ) {
-        std::cerr << "cuMemcpyDtoH_v2 d_C failed: "<<err << std::endl;
+    if (err != CUDA_SUCCESS) {
+        std::cerr << "cuMemcpyDtoH_v2 d_C failed: " << err << std::endl;
         cuMemFree_v2(d_A);
         cuMemFree_v2(d_B);
         cuMemFree_v2(d_C);
@@ -182,12 +173,17 @@ int main() {
     delete[] h_A;
     delete[] h_B;
     delete[] h_C;
-   cuCtxPopCurrent_v2(NULL);
-    // 销毁cuBLAS句柄
-    cublasDestroy(handle);
+    // 当你想要销毁 handle 并释放资源时：
+    status = cublasDestroy_v2(handle);
+    if (status != CUBLAS_STATUS_SUCCESS) {
+        return 1;
+    }
 
-    // 销毁 CUDA 上下文
-    cuCtxDestroy(context);
+    // 然后销毁上下文
+    CUresult result = cuCtxDestroy(context);
+    if (result != CUDA_SUCCESS) {
+        return 1;
+    }
 
     return 0;
 }
