@@ -9,31 +9,31 @@ int main() {
     CUfunction function;
     CUdeviceptr d_A,d_B, d_C;
     // Initialize the CUDA driver API
-    // cuInit(0);
-
-    // Choose which GPU to use (if any)
+    // gpu::init
+    cuInit(0);
     cuDeviceGet(&device, 0);
-
-    // Create a CUDA context for the chosen device
-    // gpu new
     cuCtxCreate_v2(&context, 0, device);
     cuCtxPopCurrent_v2(NULL);
 
-    // op init
+
+    // op new
     cublasHandle_t handle;
+    cuCtxPushCurrent_v2(context);
     cublasCreate_v2(&handle);
+    cuCtxPopCurrent_v2(NULL);
+
+// apply
+    cuCtxPushCurrent_v2(context);
+    // 创建流
     cudaStream_t stream;
     CUresult err = cuStreamCreate(&stream,0);
+
     if (err != CUDA_SUCCESS) {
       std::cerr << "create stream fail" << std::endl;
     return 1;
     }
  
-    cublasStatus_t stat = cublasSetStream_v2(handle, stream);
-    if (stat != CUBLAS_STATUS_SUCCESS) {
-         std::cerr << "set stream fail" << std::endl;
-     return 1;
-    }
+   // 分配内存
 
     int m = 2048; // 矩阵A的行数
     int n = 1024; // 矩阵B的列数
@@ -51,6 +51,9 @@ int main() {
     }
     for (int i = 0; i < k * n * batch_count; ++i) {
         h_B[i] = __float2half_rn(0.1f);
+    }
+      for (int i = 0; i < m * n* batch_count; ++i) {
+        h_C[i] = __float2half_rn(0.1f);
     }
     // 分配设备内存
     err = cuMemAlloc_v2(&d_A, m * k * batch_count * sizeof(half));
@@ -95,7 +98,7 @@ int main() {
 
     // 设置矩阵乘法参数
     const half alpha = 1.0f;
-    const half beta = 0.0f;
+    const half beta = 1.0f;
     const cublasOperation_t transA = CUBLAS_OP_N;
     const cublasOperation_t transB = CUBLAS_OP_N;
     const int lda = m;
@@ -107,6 +110,13 @@ int main() {
 
     // 记录开始时间
     auto start_matmul = std::chrono::system_clock::now();
+
+    // cublas
+    cublasStatus_t stat = cublasSetStream_v2(handle, stream);
+    if (stat != CUBLAS_STATUS_SUCCESS) {
+         std::cerr << "set stream fail" << std::endl;
+     return 1;
+    }
     // 调用cublasGemmStridedBatchedEx进行矩阵乘法
     cublasStatus_t status = cublasGemmStridedBatchedEx(
         handle, transA, transB, m, n, k, &alpha,
@@ -126,6 +136,7 @@ int main() {
         return 1;
     }
     cuCtxSynchronize();
+    
     // 确保所有CUDA操作已完成
     //  err1 = cudaStreamSynchronize(stream);
     // if (err != cudaSuccess) {
@@ -162,7 +173,6 @@ int main() {
         std::cout << output << " ";
     }
     std::cout << std::endl;
-
     // 释放设备内存
     cuMemFree_v2(d_A);
     cuMemFree_v2(d_B);
@@ -172,9 +182,12 @@ int main() {
     delete[] h_A;
     delete[] h_B;
     delete[] h_C;
-   cuCtxPopCurrent_v2(&context);
+   cuCtxPopCurrent_v2(NULL);
     // 销毁cuBLAS句柄
     cublasDestroy(handle);
+
+    // 销毁 CUDA 上下文
+    cuCtxDestroy(context);
 
     return 0;
 }
