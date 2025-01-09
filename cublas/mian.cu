@@ -45,7 +45,7 @@ int main() {
         h_B[i] = __float2half_rn(0.1f);
     }
     for (int i = 0; i < m * n * batch_count; ++i) {
-        h_C[i] = __float2half_rn(0.1f);
+        h_C[i] = __float2half_rn(0.0f);
     }
     // 分配设备内存
     err = cuMemAlloc_v2(&d_A, m * k * batch_count * sizeof(half));
