@@ -10,7 +10,13 @@
             "compilerPath": "/usr/local/corex/bin/clang++",
             "cStandard": "c11",
             "cppStandard": "c++17",
-             "intelliSenseMode": "linux-gcc-x64"
+            "intelliSenseMode": "linux-gcc-x64",
+            "browse": {
+                "path": [
+                    "${workspaceFolder}/**",
+                    "/usr/local/corex/include"// 替换为你实际的 CUDA 安装目录
+                ]
+            }
         }
     ],
     "version": 4
