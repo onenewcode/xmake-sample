@@ -30,6 +30,10 @@ static __device__ void add(
         i %= i_s[tmp_i];
     }
     *c = *a + *b;
+    if (i==0){
+        printf("hello world from GPU by thread:%d\n", i);
+    }
+    
 }
 extern "C" __global__ void  add_f16(
     half *__restrict__ c,
@@ -57,8 +61,8 @@ int main() {
 
     int n = 1;// 矩阵B的列数
     int c = 1;
-    int h = 1024;
-    int w = 1024;
+    int h = 64;
+    int w = 64;
     int l = n * c * h * w;
 
 
@@ -140,7 +144,7 @@ int main() {
         stride,
         l,
         stride,
-        sizeof(shape) / sizeof(shape[0]));
+        sizeof(stride) / sizeof(stride[0]));
 
 
     cuCtxSynchronize();

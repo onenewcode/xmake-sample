@@ -30,7 +30,7 @@ int main() {
     int m = 2048;        // 矩阵A的行数
     int n = 1024;        // 矩阵B的列数
     int k = 2048;        // 矩阵A的列数和矩阵B的行数
-    int batch_count = 50;// 批量数量
+    int batch_count = 500;// 批量数量
 
     // 分配主机内存
     half *h_A = new half[m * k * batch_count];
