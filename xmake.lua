@@ -21,8 +21,4 @@ target("muxi")
     set_kind("binary")    -- 目标将编译为二进制可执行文件
     add_files("src/*.cpp")
     set_toolchains("muxi.toolchain") -- 设置工具链
-    on_run(function (target)
-        local binfile = target:targetfile()
-        os.exec("srun --gpus=1 "..binfile) -- 指定显卡
-    end)
 target_end()
